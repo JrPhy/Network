@@ -1,57 +1,114 @@
-mkdir build && cd build
-cmake ../
-make\
-./server_thread ip:port\
-in another terminal ./client_thread ip:port
+網路在現今的世界已經是不可或缺的應用了，要讓使用者連接上網發訊息要靠硬體跟軟體的合作。在此基礎上建立了 OSI 七層的模型，從底層的硬體到上層的軟體，各層名稱與用途如下圖所示
+```
++----------------------+-----------------------------+
+|   應用層 (Application) | HTTP, FTP, SMTP, DNS        |
++----------------------+-----------------------------+
+|   表達層 (Presentation)| SSL/TLS, JPEG, MPEG         |
++----------------------+-----------------------------+
+|   會議層 (Session)     | RPC, NetBIOS                |
++----------------------+-----------------------------+
+|   傳輸層 (Transport)   | TCP, UDP                    |
++----------------------+-----------------------------+
+|   網路層 (Network)     | IP, ICMP, 路由器 (Router)   |
++----------------------+-----------------------------+
+|   資料鏈結層 (Data Link)| Ethernet, PPP, Switch, MAC  |
++----------------------+-----------------------------+
+|   實體層 (Physical)    | 電纜, 光纖, Hub, Wi-Fi 信號 |
++----------------------+-----------------------------+
+```
+軟體的部分就是在傳輸層以上的 4~7 層，主要有 TCP 與 UDP 兩種連接方式。兩者差異在於是否握手，前者會等待對方回覆確保連接，常用於檔案傳輸或是登入等需要**可靠性**時使用，後者則是只將資料送出不論對方是否收到，常用於影音串流等需要**即時性**時使用。
 
-## 1. 流程
-| server |  | client | 
-| :---: | :---: | :---: | 
-| socekt() |  | socekt()  | 
-| bind() |  |  | 
-| 以上為建立socekt() |  | 以上為建立socekt() |
-| listen() | <--要求連線(第一次握手) | connect()  | 
-| 阻塞至連上  |  |  | 
-| accept() | 同意連線(第二次握手)--> | connect()  | 
-| recv() | <--發送訊息(第三次握手) | send() |
-| close() | | close() |
+在寫程式時會有一個是 server 另一個是 client，server 會綁定地址等 client 送資料過來，下方程式碼會比較 TCP 與 UDP 的差異。
+SERVER
+```C
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
 
-TCP 建立連線時會有三次握手
-1. client 發送 connect 給 server (listening)
-2. server 接收到後 accept 再傳給 client (connect)
-3. client 接收到後開始與 server 通信
-斷開連線有四次揮手。\
-注：只有第三次可以攜帶數據，前兩次都不行
+int main() {
+    int server_fd, client_fd;  // UDP 不需要 client_fd，但保留原本
+    struct sockaddr_in server_addr, client_addr;
+    char buffer[1024] = {0};
 
-## 2. Socket
-第一步要先建立 socket，linux 中使用```int socket(int domain, int type, int protocol);```來建立。成功產生socket時，會返回該 socket 的檔案描述符 (socket file descriptor)，我們可以透過它來操作 socket。失敗則會回傳-1(INVALID_SOCKET)。
+    // 原本 TCP：server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    // 改成 UDP：
+    server_fd = socket(AF_INET, SOCK_DGRAM, 0); // 建立 UDP socket
 
-#### 1. domain
-AF_UNIX/AF_LOCAL：讓兩個程式共享一個檔案系統(file system)
-AF_INET , AF_INET6 ：讓兩台主機透過網路進行資料傳輸，AF_INET使用的是IPv4協定，而AF_INET6則是IPv6協定。
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(8080);
 
-#### 2. type
-SOCK_STREAM：TCP protocol，提供一個序列化的連接導向位元流，可以做位元流傳輸。
-SOCK_DGRAM：UDP protocol提供的是一個一個的資料包(datagram)。
+    bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr));
 
-#### 3. protocol
-設定 socket 的協定標準，0 是讓 kernel 選擇 type 對應的默認協議。
+    // TCP 專用：listen() + accept()
+    // listen(server_fd, 3);
+    // socklen_t addrlen = sizeof(client_addr);
+    // client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &addrlen);
 
-## 3. bind
-再來要指定 ip(字串) 與 port(整數)，```iner_addr(ip string)```將 ipv4 的字串轉為整數，```htons(port)```將本機端的字節序(endian)轉換成了網路端的字節序，最後傳入下方來綁定 ip:port。
-```int bind(int sockfd, struct sockaddr* addr, int addrlen);```
+    socklen_t addrlen = sizeof(client_addr);
 
-## 4. listen
-socket 綁定成功後就可以使用 ```int listen(int sockfd, int backlog);```監聽，backlog 表示最多能有幾個人能連入 server。成功為 0，產生錯誤則回傳 -1。此函數就是在監聽，看是否有 client 發送握手訊，即第一次握手。
+    // TCP 用 read()，UDP 改用 recvfrom()
+    // read(client_fd, buffer, sizeof(buffer));
+    int n = recvfrom(server_fd, buffer, sizeof(buffer), 0,
+                     (struct sockaddr*)&client_addr, &addrlen);
+    buffer[n] = '\0';
+    printf("收到: %s\n", buffer);
 
-## 5. accept
-接著進入無窮迴圈中等待連線進入，當有新的連線進入後使用 ```int accept(int sockfd, struct sockaddr addr, socklen_t addrlen);```來接收新的連線。將前面所建立的 socket 傳入，並將結構體和結構體大小傳入，就可以開始與 client 端收發訊息。及第二次握手。
+    // TCP 用 send()，UDP 用 sendto()
+    // char *reply = "Hello from TCP server";
+    char *reply = "Hello from UDP server";
+    // send(client_fd, reply, strlen(reply), 0);
+    sendto(server_fd, reply, strlen(reply), 0,
+           (struct sockaddr*)&client_addr, addrlen);
 
-## 6. connect
-就是 client 端的 bind，要綁對方的 ip:port。```int connect(int sockfd, struct sockaddr *server, int addr_len);```。client 端藉由 connect 發送握手訊息給 server。
+    // TCP 關閉 client_fd
+    // close(client_fd);
+    close(server_fd);
+    return 0;
+}
 
-## 7. 斷開連線
-1. 其中一方發起，假設是 Client 端
-2. Server 端收到後一樣會回傳給 Client 端確認所有訊息已傳遞完成
-3. 傳遞完成後 Client 會再向 Server 端發送一次確認
-4. Server 回覆 Client 端確認後即斷開
+```
+CLIENT
+```C
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+int main() {
+    int sock;
+    struct sockaddr_in server_addr;
+    char buffer[1024] = {0};
+
+    // 原本 TCP：sock = socket(AF_INET, SOCK_STREAM, 0);
+    // 改成 UDP：
+    sock = socket(AF_INET, SOCK_DGRAM, 0); // 建立 UDP socket
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(8080);
+    inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr);
+
+    // TCP 用 connect()
+    // connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
+
+    // 原本 TCP 用 send()，UDP 用 sendto()
+    // char *msg = "Hello TCP server";
+    char *msg = "Hello UDP server";
+    // send(sock, msg, strlen(msg), 0);
+    sendto(sock, msg, strlen(msg), 0,
+           (struct sockaddr*)&server_addr, sizeof(server_addr));
+
+    // 原本 TCP 用 read()，UDP 改用 recvfrom()
+    // read(sock, buffer, sizeof(buffer));
+    socklen_t addrlen = sizeof(server_addr);
+    int n = recvfrom(sock, buffer, sizeof(buffer), 0,
+                     (struct sockaddr*)&server_addr, &addrlen);
+    buffer[n] = '\0';
+    printf("伺服器回覆: %s\n", buffer);
+
+    close(sock);
+    return 0;
+}
