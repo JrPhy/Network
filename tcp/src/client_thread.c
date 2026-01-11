@@ -14,8 +14,7 @@ int port;
 char buf[4096], ip[16];
 // Function to send data to
 // server socket.
-int timeout_recv(int fd, int *buf, int len, int nsec)
-{
+int timeout_recv(int fd, int *buf, int len, int nsec) {
     struct timeval timeout;
     timeout.tv_sec = nsec;
     timeout.tv_usec = 0;
@@ -32,8 +31,7 @@ int timeout_recv(int fd, int *buf, int len, int nsec)
     return n;
 }
 
-void* clienthread(void* args)
-{
+void* clienthread(void* args) {
     int status = 0;
     char buf[4096];
     // Create a stream socket
@@ -69,14 +67,13 @@ void* clienthread(void* args)
     int nbytes, nread, kkk = 0;
 
     nread = timeout_recv(network_socket, &status, sizeof(status), 20);
-    if (nread == 0) {
+    if (!nread) {
         printf("time out\n");
         shutdown(network_socket, SHUT_RDWR);
         return 0;
     }
     if(status == 1) printf("connect to server succesfully\n");
-    else 
-    {
+    else {
         printf("server is full, exit!\n");
         exit(0);
     }
@@ -86,15 +83,11 @@ void* clienthread(void* args)
     printf("ggg = %d\n", ggg);
     while (1) {
         kkk++; 
-        if(kkk == 10000)
-        {
+        if(kkk == 10000) {
             nbytes = send(network_socket, &ggg, sizeof(ggg), 0);
             if (nbytes < 0) {
                 perror("send error");
                 break;
-            }
-            else if (nbytes == 0) {
-            
             }
         }
     }
@@ -106,8 +99,7 @@ void* clienthread(void* args)
 }
  
 // Driver Code
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     // Initialize variables
     if (1 == argc) return 0;
     char buf[4096];
